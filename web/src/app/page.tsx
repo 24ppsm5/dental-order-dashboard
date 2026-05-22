@@ -1,7 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Building2, ExternalLink, Package, Stethoscope } from "lucide-react";
+import {
+  Building2,
+  ExternalLink,
+  History,
+  Package,
+  Stethoscope,
+} from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -14,12 +20,21 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   FACILITIES,
+  getFacilityByRoomId,
   MOCK_MESSAGES,
   ORDER_LINKS,
   type Facility,
-  type OrderItem,
   type OrderStatus,
 } from "@/lib/data";
+import {
+  createHistoryRecord,
+  formatHistoryLine,
+  loadHistory,
+  removeHistoryRecord,
+  saveHistory,
+  upsertHistoryRecord,
+  type OrderHistoryRecord,
+} from "@/lib/order-history";
 import {
   formatOrderDate,
   groupOrdersByDate,
@@ -49,10 +64,12 @@ export default function Home() {
   );
   const [filter, setFilter] = useState<OrderStatus>("pending");
   const [statuses, setStatuses] = useState<Record<string, OrderStatus>>({});
+  const [history, setHistory] = useState<OrderHistoryRecord[]>([]);
   const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
     setStatuses(loadStatuses());
+    setHistory(loadHistory());
     setHydrated(true);
   }, []);
 
@@ -78,13 +95,39 @@ export default function Home() {
 
   const grouped = useMemo(() => groupOrdersByDate(filtered), [filtered]);
 
-  const setOrderStatus = useCallback((id: string, status: OrderStatus) => {
-    setStatuses((prev) => {
-      const next = { ...prev, [id]: status };
-      saveStatuses(next);
-      return next;
-    });
-  }, []);
+  const setOrderStatus = useCallback(
+    (id: string, status: OrderStatus) => {
+      const order = orders.find((o) => o.id === id);
+
+      setStatuses((prev) => {
+        const next = { ...prev, [id]: status };
+        saveStatuses(next);
+        return next;
+      });
+
+      if (status === "ordered" && order) {
+        const facility = getFacilityByRoomId(order.roomId);
+        const entry = createHistoryRecord({
+          id: order.id,
+          orderDate: order.date,
+          itemName: order.itemName,
+          facilityName: facility?.name ?? "不明",
+        });
+        setHistory((prev) => {
+          const next = upsertHistoryRecord(prev, entry);
+          saveHistory(next);
+          return next;
+        });
+      } else if (status === "pending") {
+        setHistory((prev) => {
+          const next = removeHistoryRecord(prev, id);
+          saveHistory(next);
+          return next;
+        });
+      }
+    },
+    [orders]
+  );
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-background">
@@ -101,7 +144,7 @@ export default function Home() {
         </div>
       </header>
 
-      {/* 3ペイン */}
+      {/* 4ペイン */}
       <div className="flex min-h-0 flex-1">
         {/* 1. 施設一覧 */}
         <aside className="flex h-full w-56 shrink-0 flex-col border-r border-border bg-sidebar">
@@ -225,7 +268,42 @@ export default function Home() {
           </ScrollArea>
         </main>
 
-        {/* 3. 発注先リンク集 */}
+        {/* 3. 過去の発注履歴 */}
+        <aside className="flex h-full w-72 shrink-0 flex-col border-l border-border bg-background">
+          <div className="border-b border-border px-4 py-4">
+            <h2 className="text-sm font-semibold">過去の発注履歴</h2>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              発注済みにした商品（全施設）
+            </p>
+          </div>
+          <ScrollArea className="flex-1">
+            <div className="p-3">
+              {!hydrated ? (
+                <p className="py-8 text-center text-xs text-muted-foreground">
+                  読み込み中…
+                </p>
+              ) : history.length === 0 ? (
+                <div className="flex flex-col items-center gap-2 py-16 text-center text-muted-foreground">
+                  <History className="size-8 opacity-40" />
+                  <p className="text-xs">発注済みの履歴はありません</p>
+                </div>
+              ) : (
+                <ul className="space-y-1">
+                  {history.map((record) => (
+                    <li
+                      key={record.id}
+                      className="rounded-md px-2 py-2 text-sm leading-relaxed hover:bg-muted/60"
+                    >
+                      {formatHistoryLine(record)}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </ScrollArea>
+        </aside>
+
+        {/* 4. 発注先リンク集 */}
         <aside className="flex h-full w-72 shrink-0 flex-col border-l border-border bg-muted/30">
           <div className="border-b border-border px-4 py-4">
             <h2 className="text-sm font-semibold">発注先リンク集</h2>

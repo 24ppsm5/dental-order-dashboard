@@ -28,6 +28,10 @@ export const FACILITIES: Facility[] = [
   { id: "capybara", name: "カバクリニック", roomId: 432513224 },
 ];
 
+export function getFacilityByRoomId(roomId: number): Facility | undefined {
+  return FACILITIES.find((f) => f.roomId === roomId);
+}
+
 export const ORDER_LINKS = [
   { name: "Ciモール", url: "https://www.ci-medical.com/" },
   { name: "FEED", url: "https://dental.feed.jp/" },
