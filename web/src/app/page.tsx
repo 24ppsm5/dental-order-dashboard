@@ -3,26 +3,19 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Building2,
-  ExternalLink,
   History,
   Package,
   Stethoscope,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ProductMasterForm } from "@/components/product-master-form";
 import {
   FACILITIES,
   getFacilityByRoomId,
   MOCK_MESSAGES,
-  ORDER_LINKS,
   type Facility,
   type OrderStatus,
 } from "@/lib/data";
@@ -303,40 +296,8 @@ export default function Home() {
           </ScrollArea>
         </aside>
 
-        {/* 4. 発注先リンク集 */}
-        <aside className="flex h-full w-72 shrink-0 flex-col border-l border-border bg-muted/30">
-          <div className="border-b border-border px-4 py-4">
-            <h2 className="text-sm font-semibold">発注先リンク集</h2>
-            <p className="mt-0.5 text-xs text-muted-foreground">
-              別タブで開きます
-            </p>
-          </div>
-          <ScrollArea className="flex-1 p-4">
-            <div className="space-y-3">
-              {ORDER_LINKS.map((link) => (
-                <a
-                  key={link.url}
-                  href={link.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="block"
-                >
-                  <Card className="transition-shadow hover:shadow-md">
-                    <CardHeader className="pb-3">
-                      <div className="flex items-center justify-between gap-2">
-                        <CardTitle className="text-base">{link.name}</CardTitle>
-                        <ExternalLink className="size-4 shrink-0 text-muted-foreground" />
-                      </div>
-                      <CardDescription className="truncate text-xs">
-                        {link.url}
-                      </CardDescription>
-                    </CardHeader>
-                  </Card>
-                </a>
-              ))}
-            </div>
-          </ScrollArea>
-        </aside>
+        {/* 4. 商品マスター登録 + リンク集 */}
+        <ProductMasterForm />
       </div>
     </div>
   );

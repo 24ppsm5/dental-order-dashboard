@@ -33,6 +33,8 @@ export function getFacilityByRoomId(roomId: number): Facility | undefined {
 }
 
 export const ORDER_LINKS = [
+  { name: "Chatwork", url: "https://www.chatwork.com/" },
+  { name: "Airtable", url: "https://airtable.com/" },
   { name: "Ciモール", url: "https://www.ci-medical.com/" },
   { name: "FEED", url: "https://dental.feed.jp/" },
 ] as const;
