@@ -3,12 +3,23 @@ import {
   type ProductMasterInput,
 } from "@/lib/products/types";
 
+function logAirtableEnvStatus(): void {
+  console.log("[Airtable env check]", {
+    AIRTABLE_API_KEY: Boolean(process.env.AIRTABLE_API_KEY),
+    AIRTABLE_BASE_ID: Boolean(process.env.AIRTABLE_BASE_ID),
+    AIRTABLE_TABLE_NAME:
+      process.env.AIRTABLE_TABLE_NAME ?? "(未設定 → デフォルト: 商品マスター)",
+    cwd: process.cwd(),
+  });
+}
+
 function getAirtableConfig() {
   const apiKey = process.env.AIRTABLE_API_KEY;
   const baseId = process.env.AIRTABLE_BASE_ID;
   const tableName = process.env.AIRTABLE_TABLE_NAME ?? "商品マスター";
 
   if (!apiKey || !baseId) {
+    logAirtableEnvStatus();
     throw new Error(
       "Airtable の環境変数（AIRTABLE_API_KEY / AIRTABLE_BASE_ID）が設定されていません"
     );
