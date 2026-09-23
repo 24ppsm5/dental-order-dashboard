@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   Clock,
   ExternalLink,
   Link2,
   Loader2,
   PackagePlus,
+  Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -32,6 +33,8 @@ type FormState = {
   orderNumber: string;
 };
 
+type ProductListItem = ProductMasterInput & { recordId: string };
+
 const EMPTY_FORM: FormState = {
   name: "",
   unit: "",
@@ -50,10 +53,38 @@ export function ProductMasterForm() {
     text: string;
   } | null>(null);
 
+  const [products, setProducts] = useState<ProductListItem[]>([]);
+  const [productsLoading, setProductsLoading] = useState(true);
+  const [productsError, setProductsError] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  const fetchProducts = useCallback(async () => {
+    setProductsLoading(true);
+    setProductsError(null);
+    try {
+      const res = await fetch("/api/products");
+      const data = (await res.json()) as {
+        products?: ProductListItem[];
+        error?: string;
+      };
+      if (!res.ok) {
+        throw new Error(data.error ?? "商品一覧の取得に失敗しました");
+      }
+      setProducts(data.products ?? []);
+    } catch (err) {
+      setProductsError(
+        err instanceof Error ? err.message : "商品一覧の取得に失敗しました"
+      );
+    } finally {
+      setProductsLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     setRecentProducts(loadRecentProductNames());
     setHydrated(true);
-  }, []);
+    fetchProducts();
+  }, [fetchProducts]);
 
   const update = (key: keyof FormState, value: string) => {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -97,6 +128,7 @@ export function ProductMasterForm() {
         text: data.message ?? "商品を登録しました",
       });
       setForm(EMPTY_FORM);
+      fetchProducts();
     } catch (err) {
       setMessage({
         type: "error",
@@ -104,6 +136,27 @@ export function ProductMasterForm() {
       });
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleDelete = async (recordId: string) => {
+    setDeletingId(recordId);
+    setProductsError(null);
+    try {
+      const res = await fetch(`/api/products/${recordId}`, {
+        method: "DELETE",
+      });
+      const data = (await res.json()) as { success?: boolean; error?: string };
+      if (!res.ok) {
+        throw new Error(data.error ?? "商品の削除に失敗しました");
+      }
+      setProducts((prev) => prev.filter((p) => p.recordId !== recordId));
+    } catch (err) {
+      setProductsError(
+        err instanceof Error ? err.message : "商品の削除に失敗しました"
+      );
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -196,7 +249,72 @@ export function ProductMasterForm() {
 
           <Separator />
 
-          {/* 2. 最近登録した商品 */}
+          {/* 2. 登録済み商品一覧（Airtable と同期） */}
+          <section className="bg-background/80">
+            <div className="flex items-center justify-between gap-1.5 border-b border-border px-4 py-2.5">
+              <div className="flex items-center gap-1.5">
+                <PackagePlus className="size-3.5 text-muted-foreground" />
+                <h3 className="text-xs font-semibold">登録済み商品一覧</h3>
+              </div>
+              <span className="text-[10px] text-muted-foreground">
+                {productsLoading ? "更新中…" : `${products.length}件`}
+              </span>
+            </div>
+            <div className="p-4">
+              {productsError && (
+                <div
+                  className="mb-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive"
+                  role="alert"
+                >
+                  {productsError}
+                </div>
+              )}
+              {productsLoading ? (
+                <p className="text-xs text-muted-foreground">読み込み中…</p>
+              ) : products.length === 0 ? (
+                <p className="text-xs text-muted-foreground">
+                  登録された商品はまだありません
+                </p>
+              ) : (
+                <ul className="space-y-1.5">
+                  {products.map((p) => (
+                    <li
+                      key={p.recordId}
+                      className="flex items-center justify-between gap-2 rounded-md border border-border/60 bg-background px-2 py-1.5"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium">
+                          {p.name}
+                        </p>
+                        <p className="truncate text-[11px] text-muted-foreground">
+                          {p.vendor} ・ {p.unit} ・ {p.price.toLocaleString()}円
+                        </p>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="size-7 shrink-0 text-muted-foreground hover:text-destructive"
+                        disabled={deletingId === p.recordId}
+                        onClick={() => handleDelete(p.recordId)}
+                        aria-label={`${p.name}を削除`}
+                      >
+                        {deletingId === p.recordId ? (
+                          <Loader2 className="size-3.5 animate-spin" />
+                        ) : (
+                          <Trash2 className="size-3.5" />
+                        )}
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </section>
+
+          <Separator />
+
+          {/* 3. 最近登録した商品 */}
           <section className="bg-background/80">
             <div className="flex items-center gap-1.5 border-b border-border px-4 py-2.5">
               <Clock className="size-3.5 text-muted-foreground" />
@@ -226,7 +344,7 @@ export function ProductMasterForm() {
 
           <Separator />
 
-          {/* 3. リンク集 */}
+          {/* 4. リンク集 */}
           <section className="bg-background/60 pb-4">
             <div className="flex items-center gap-1.5 border-b border-border px-4 py-2.5">
               <Link2 className="size-3.5 text-muted-foreground" />

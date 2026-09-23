@@ -28,6 +28,10 @@ export const EMPTY_PRODUCT_FORM: ProductMasterInput = {
   orderNumber: "",
 };
 
+/** 明らかな誤入力を防ぐための上限値（業務上ありえない値を弾くための緩い上限） */
+const MAX_TEXT_LENGTH = 100;
+const MAX_PRICE = 10_000_000;
+
 export function validateProductInput(
   body: unknown
 ): { ok: true; data: ProductMasterInput } | { ok: false; error: string } {
@@ -47,11 +51,31 @@ export function validateProductInput(
   if (!vendor) return { ok: false, error: "販売先を入力してください" };
   if (!orderNumber) return { ok: false, error: "発注番号を入力してください" };
 
+  for (const [label, value] of [
+    ["商品名", name],
+    ["単位", unit],
+    ["販売先", vendor],
+    ["発注番号", orderNumber],
+  ] as const) {
+    if (value.length > MAX_TEXT_LENGTH) {
+      return {
+        ok: false,
+        error: `${label}は${MAX_TEXT_LENGTH}文字以内で入力してください`,
+      };
+    }
+  }
+
   const price =
     typeof priceRaw === "number" ? priceRaw : Number(String(priceRaw ?? ""));
 
   if (!Number.isFinite(price) || price < 0) {
     return { ok: false, error: "金額は0以上の数値で入力してください" };
+  }
+  if (price > MAX_PRICE) {
+    return {
+      ok: false,
+      error: `金額は${MAX_PRICE.toLocaleString()}円以下で入力してください`,
+    };
   }
 
   return {

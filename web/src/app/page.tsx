@@ -5,10 +5,12 @@ import {
   Building2,
   History,
   Package,
+  Search,
   Stethoscope,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ProductMasterForm } from "@/components/product-master-form";
@@ -22,9 +24,7 @@ import {
 import {
   createHistoryRecord,
   formatHistoryLine,
-  loadHistory,
   removeHistoryRecord,
-  saveHistory,
   upsertHistoryRecord,
   type OrderHistoryRecord,
 } from "@/lib/order-history";
@@ -35,22 +35,6 @@ import {
 } from "@/lib/parse-orders";
 import { cn } from "@/lib/utils";
 
-const STATUS_KEY = "dental-order-statuses";
-
-function loadStatuses(): Record<string, OrderStatus> {
-  if (typeof window === "undefined") return {};
-  try {
-    const raw = localStorage.getItem(STATUS_KEY);
-    return raw ? (JSON.parse(raw) as Record<string, OrderStatus>) : {};
-  } catch {
-    return {};
-  }
-}
-
-function saveStatuses(statuses: Record<string, OrderStatus>) {
-  localStorage.setItem(STATUS_KEY, JSON.stringify(statuses));
-}
-
 export default function Home() {
   const [selectedRoomId, setSelectedRoomId] = useState(
     FACILITIES[0]?.roomId ?? 0
@@ -58,12 +42,44 @@ export default function Home() {
   const [filter, setFilter] = useState<OrderStatus>("pending");
   const [statuses, setStatuses] = useState<Record<string, OrderStatus>>({});
   const [history, setHistory] = useState<OrderHistoryRecord[]>([]);
+  const [historyQuery, setHistoryQuery] = useState("");
   const [hydrated, setHydrated] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
 
+  // 発注ステータス・履歴は Airtable（共有データベース）から取得する。
+  // これで複数人・複数端末で同じ状態を見られる。
   useEffect(() => {
-    setStatuses(loadStatuses());
-    setHistory(loadHistory());
-    setHydrated(true);
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const res = await fetch("/api/order-status");
+        const data = (await res.json()) as {
+          statuses?: Record<string, OrderStatus>;
+          history?: OrderHistoryRecord[];
+          error?: string;
+        };
+        if (!res.ok) {
+          throw new Error(data.error ?? "発注状況の取得に失敗しました");
+        }
+        if (!cancelled) {
+          setStatuses(data.statuses ?? {});
+          setHistory(data.history ?? []);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setActionError(
+            err instanceof Error ? err.message : "発注状況の取得に失敗しました"
+          );
+        }
+      } finally {
+        if (!cancelled) setHydrated(true);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const facility = useMemo(
@@ -88,35 +104,75 @@ export default function Home() {
 
   const grouped = useMemo(() => groupOrdersByDate(filtered), [filtered]);
 
+  // 施設ごとの未発注件数（1ペイン目のバッジ表示用）
+  const pendingCountByRoomId = useMemo(() => {
+    const counts: Record<number, number> = {};
+    for (const f of FACILITIES) {
+      const messages = MOCK_MESSAGES[f.roomId] ?? [];
+      const parsed = parseOrdersFromMessages(messages, f.roomId);
+      counts[f.roomId] = hydrated
+        ? parsed.filter((o) => (statuses[o.id] ?? o.status) === "pending")
+            .length
+        : parsed.filter((o) => o.status === "pending").length;
+    }
+    return counts;
+  }, [statuses, hydrated]);
+
+  const filteredHistory = useMemo(() => {
+    const q = historyQuery.trim();
+    if (!q) return history;
+    return history.filter(
+      (r) =>
+        r.itemName.includes(q) ||
+        r.facilityName.includes(q) ||
+        r.orderDate.includes(q)
+    );
+  }, [history, historyQuery]);
+
   const setOrderStatus = useCallback(
-    (id: string, status: OrderStatus) => {
+    async (id: string, status: OrderStatus) => {
       const order = orders.find((o) => o.id === id);
+      if (!order) return;
 
-      setStatuses((prev) => {
-        const next = { ...prev, [id]: status };
-        saveStatuses(next);
-        return next;
-      });
+      const orderFacility = getFacilityByRoomId(order.roomId);
+      const facilityName = orderFacility?.name ?? "不明";
 
-      if (status === "ordered" && order) {
-        const facility = getFacilityByRoomId(order.roomId);
-        const entry = createHistoryRecord({
-          id: order.id,
-          orderDate: order.date,
-          itemName: order.itemName,
-          facilityName: facility?.name ?? "不明",
+      setActionError(null);
+
+      try {
+        const res = await fetch("/api/order-status", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            id,
+            status,
+            facilityName,
+            itemName: order.itemName,
+            orderDate: order.date,
+          }),
         });
-        setHistory((prev) => {
-          const next = upsertHistoryRecord(prev, entry);
-          saveHistory(next);
-          return next;
-        });
-      } else if (status === "pending") {
-        setHistory((prev) => {
-          const next = removeHistoryRecord(prev, id);
-          saveHistory(next);
-          return next;
-        });
+        const data = (await res.json()) as { error?: string };
+        if (!res.ok) {
+          throw new Error(data.error ?? "更新に失敗しました");
+        }
+
+        setStatuses((prev) => ({ ...prev, [id]: status }));
+
+        if (status === "ordered") {
+          const entry = createHistoryRecord({
+            id,
+            orderDate: order.date,
+            itemName: order.itemName,
+            facilityName,
+          });
+          setHistory((prev) => upsertHistoryRecord(prev, entry));
+        } else {
+          setHistory((prev) => removeHistoryRecord(prev, id));
+        }
+      } catch (err) {
+        setActionError(
+          err instanceof Error ? err.message : "更新に失敗しました"
+        );
       }
     },
     [orders]
@@ -133,9 +189,24 @@ export default function Home() {
           <h1 className="text-lg font-semibold tracking-tight">
             歯科材料 発注管理
           </h1>
-          <p className="text-xs text-muted-foreground">モックデータ版</p>
+          <p className="text-xs text-muted-foreground">
+            発注ステータスはAirtableで共有されます
+          </p>
         </div>
       </header>
+
+      {actionError && (
+        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-destructive/30 bg-destructive/5 px-5 py-2 text-xs text-destructive">
+          <span>{actionError}</span>
+          <button
+            type="button"
+            onClick={() => setActionError(null)}
+            className="shrink-0 underline underline-offset-2"
+          >
+            閉じる
+          </button>
+        </div>
+      )}
 
       {/* 4ペイン */}
       <div className="flex min-h-0 flex-1">
@@ -154,6 +225,7 @@ export default function Home() {
                     key={f.id}
                     facility={f}
                     selected={selectedRoomId === f.roomId}
+                    pendingCount={pendingCountByRoomId[f.roomId] ?? 0}
                     onSelect={() => setSelectedRoomId(f.roomId)}
                   />
                 ))}
@@ -269,20 +341,35 @@ export default function Home() {
               発注済みにした商品（全施設）
             </p>
           </div>
+          <div className="border-b border-border px-3 py-2.5">
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={historyQuery}
+                onChange={(e) => setHistoryQuery(e.target.value)}
+                placeholder="施設名・商品名・日付で絞り込み"
+                className="h-8 pl-8 text-xs"
+              />
+            </div>
+          </div>
           <ScrollArea className="flex-1">
             <div className="p-3">
               {!hydrated ? (
                 <p className="py-8 text-center text-xs text-muted-foreground">
                   読み込み中…
                 </p>
-              ) : history.length === 0 ? (
+              ) : filteredHistory.length === 0 ? (
                 <div className="flex flex-col items-center gap-2 py-16 text-center text-muted-foreground">
                   <History className="size-8 opacity-40" />
-                  <p className="text-xs">発注済みの履歴はありません</p>
+                  <p className="text-xs">
+                    {history.length === 0
+                      ? "発注済みの履歴はありません"
+                      : "該当する履歴が見つかりません"}
+                  </p>
                 </div>
               ) : (
                 <ul className="space-y-1">
-                  {history.map((record) => (
+                  {filteredHistory.map((record) => (
                     <li
                       key={record.id}
                       className="rounded-md px-2 py-2 text-sm leading-relaxed hover:bg-muted/60"
@@ -306,10 +393,12 @@ export default function Home() {
 function FacilityButton({
   facility,
   selected,
+  pendingCount,
   onSelect,
 }: {
   facility: Facility;
   selected: boolean;
+  pendingCount: number;
   onSelect: () => void;
 }) {
   return (
@@ -330,7 +419,17 @@ function FacilityButton({
             selected ? "text-primary" : "text-muted-foreground"
           )}
         />
-        <span className="font-medium leading-snug">{facility.name}</span>
+        <span className="flex-1 min-w-0 truncate font-medium leading-snug">
+          {facility.name}
+        </span>
+        {pendingCount > 0 && (
+          <Badge
+            variant={selected ? "default" : "secondary"}
+            className="shrink-0"
+          >
+            {pendingCount}
+          </Badge>
+        )}
       </button>
     </li>
   );

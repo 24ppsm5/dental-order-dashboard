@@ -1,30 +1,12 @@
 import { formatOrderDate } from "@/lib/parse-orders";
 
-/** 過去の発注履歴（DB移行時もこの型を利用可能） */
+/** 過去の発注履歴（Airtable の発注ステータステーブルから組み立てる） */
 export interface OrderHistoryRecord {
   id: string;
   orderDate: string;
   itemName: string;
   facilityName: string;
   markedAt: string;
-}
-
-const HISTORY_KEY = "dental-order-history";
-
-export function loadHistory(): OrderHistoryRecord[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const raw = localStorage.getItem(HISTORY_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as OrderHistoryRecord[];
-    return Array.isArray(parsed) ? sortHistory(parsed) : [];
-  } catch {
-    return [];
-  }
-}
-
-export function saveHistory(records: OrderHistoryRecord[]) {
-  localStorage.setItem(HISTORY_KEY, JSON.stringify(sortHistory(records)));
 }
 
 export function sortHistory(

@@ -1,6 +1,20 @@
 import { NextResponse } from "next/server";
-import { createProductInAirtable } from "@/lib/airtable/client";
+import {
+  createProductInAirtable,
+  listProductsFromAirtable,
+} from "@/lib/airtable/client";
 import { validateProductInput } from "@/lib/products/types";
+
+export async function GET() {
+  try {
+    const products = await listProductsFromAirtable();
+    return NextResponse.json({ products });
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "商品一覧の取得に失敗しました";
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+}
 
 export async function POST(request: Request) {
   try {
