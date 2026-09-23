@@ -3,13 +3,16 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Building2,
+  CheckCircle2,
+  ChevronDown,
+  Circle,
   History,
+  Loader2,
   Package,
   Search,
   Stethoscope,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -19,6 +22,7 @@ import {
   getFacilityByRoomId,
   MOCK_MESSAGES,
   type Facility,
+  type OrderItem,
   type OrderStatus,
 } from "@/lib/data";
 import {
@@ -35,16 +39,19 @@ import {
 } from "@/lib/parse-orders";
 import { cn } from "@/lib/utils";
 
+type ListFilter = "all" | "pending";
+
 export default function Home() {
   const [selectedRoomId, setSelectedRoomId] = useState(
     FACILITIES[0]?.roomId ?? 0
   );
-  const [filter, setFilter] = useState<OrderStatus>("pending");
+  const [filter, setFilter] = useState<ListFilter>("all");
   const [statuses, setStatuses] = useState<Record<string, OrderStatus>>({});
   const [history, setHistory] = useState<OrderHistoryRecord[]>([]);
   const [historyQuery, setHistoryQuery] = useState("");
   const [hydrated, setHydrated] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [updatingIds, setUpdatingIds] = useState<Set<string>>(new Set());
 
   // 発注ステータス・履歴は Airtable（共有データベース）から取得する。
   // これで複数人・複数端末で同じ状態を見られる。
@@ -98,7 +105,7 @@ export default function Home() {
   }, [selectedRoomId, statuses, hydrated]);
 
   const filtered = useMemo(
-    () => orders.filter((o) => o.status === filter),
+    () => orders.filter((o) => filter === "all" || o.status === "pending"),
     [orders, filter]
   );
 
@@ -178,6 +185,31 @@ export default function Home() {
     [orders]
   );
 
+  // チェックリストのタップで 未発注 ⇄ 発注済み を切り替える
+  const handleToggle = useCallback(
+    async (order: OrderItem) => {
+      const next: OrderStatus =
+        order.status === "ordered" ? "pending" : "ordered";
+
+      setUpdatingIds((prev) => {
+        const nextSet = new Set(prev);
+        nextSet.add(order.id);
+        return nextSet;
+      });
+
+      try {
+        await setOrderStatus(order.id, next);
+      } finally {
+        setUpdatingIds((prev) => {
+          const nextSet = new Set(prev);
+          nextSet.delete(order.id);
+          return nextSet;
+        });
+      }
+    },
+    [setOrderStatus]
+  );
+
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-background">
       {/* ヘッダー */}
@@ -245,11 +277,11 @@ export default function Home() {
             </div>
             <Tabs
               value={filter}
-              onValueChange={(v) => setFilter(v as OrderStatus)}
+              onValueChange={(v) => setFilter(v as ListFilter)}
             >
               <TabsList>
+                <TabsTrigger value="all">全表示</TabsTrigger>
                 <TabsTrigger value="pending">未発注</TabsTrigger>
-                <TabsTrigger value="ordered">発注済み</TabsTrigger>
               </TabsList>
             </Tabs>
           </div>
@@ -260,72 +292,21 @@ export default function Home() {
                 <div className="flex flex-col items-center gap-2 py-20 text-center text-muted-foreground">
                   <Package className="size-10 opacity-40" />
                   <p className="text-sm">
-                    {filter === "pending"
-                      ? "未発注の依頼はありません"
-                      : "発注済みの依頼はありません"}
+                    {filter === "all"
+                      ? "発注依頼はありません"
+                      : "未発注の依頼はありません"}
                   </p>
                 </div>
               ) : (
-                <div className="space-y-6">
+                <div className="space-y-4">
                   {grouped.map(({ date, items }) => (
-                    <section
+                    <DateGroup
                       key={date}
-                      className="rounded-xl border border-border bg-card shadow-sm"
-                    >
-                      <div className="border-b border-border bg-muted/40 px-4 py-3">
-                        <p className="font-semibold">{formatOrderDate(date)}</p>
-                      </div>
-                      <ul className="divide-y divide-border">
-                        {items.map((order) => (
-                          <li
-                            key={order.id}
-                            className="flex flex-wrap items-center justify-between gap-3 px-4 py-3"
-                          >
-                            <p className="text-sm font-medium">
-                              <span className="text-muted-foreground">・</span>
-                              {order.itemName}
-                            </p>
-                            <div className="flex shrink-0 items-center gap-2">
-                              <Badge
-                                variant={
-                                  order.status === "pending"
-                                    ? "secondary"
-                                    : "default"
-                                }
-                                className={cn(
-                                  order.status === "ordered" &&
-                                    "bg-emerald-600 hover:bg-emerald-600"
-                                )}
-                              >
-                                {order.status === "pending"
-                                  ? "未発注"
-                                  : "発注済み"}
-                              </Badge>
-                              {order.status === "pending" ? (
-                                <Button
-                                  size="sm"
-                                  onClick={() =>
-                                    setOrderStatus(order.id, "ordered")
-                                  }
-                                >
-                                  発注済みにする
-                                </Button>
-                              ) : (
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() =>
-                                    setOrderStatus(order.id, "pending")
-                                  }
-                                >
-                                  未発注に戻す
-                                </Button>
-                              )}
-                            </div>
-                          </li>
-                        ))}
-                      </ul>
-                    </section>
+                      date={date}
+                      items={items}
+                      updatingIds={updatingIds}
+                      onToggle={handleToggle}
+                    />
                   ))}
                 </div>
               )}
@@ -432,5 +413,79 @@ function FacilityButton({
         )}
       </button>
     </li>
+  );
+}
+
+/** 日付ごとの発注グループ。折りたたみ可能で、各アイテムはチェックリスト形式でタップして状態を切り替える */
+function DateGroup({
+  date,
+  items,
+  updatingIds,
+  onToggle,
+}: {
+  date: string;
+  items: OrderItem[];
+  updatingIds: Set<string>;
+  onToggle: (order: OrderItem) => void;
+}) {
+  const [open, setOpen] = useState(true);
+  const orderedCount = items.filter((i) => i.status === "ordered").length;
+
+  return (
+    <section className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className={cn(
+          "flex w-full items-center justify-between gap-3 bg-muted/40 px-4 py-3 text-left",
+          open && "border-b border-border"
+        )}
+      >
+        <span className="font-semibold">{formatOrderDate(date)}</span>
+        <span className="flex items-center gap-2 text-xs text-muted-foreground">
+          {orderedCount > 0 && `${orderedCount}/${items.length} 発注済み`}
+          <ChevronDown
+            className={cn(
+              "size-4 transition-transform",
+              !open && "-rotate-90"
+            )}
+          />
+        </span>
+      </button>
+      {open && (
+        <ul className="divide-y divide-border">
+          {items.map((order) => {
+            const updating = updatingIds.has(order.id);
+            return (
+              <li key={order.id}>
+                <button
+                  type="button"
+                  onClick={() => onToggle(order)}
+                  disabled={updating}
+                  className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/40 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {updating ? (
+                    <Loader2 className="size-5 shrink-0 animate-spin text-muted-foreground" />
+                  ) : order.status === "ordered" ? (
+                    <CheckCircle2 className="size-5 shrink-0 text-emerald-600" />
+                  ) : (
+                    <Circle className="size-5 shrink-0 text-muted-foreground" />
+                  )}
+                  <span
+                    className={cn(
+                      "text-sm font-medium",
+                      order.status === "ordered" &&
+                        "text-muted-foreground line-through"
+                    )}
+                  >
+                    {order.itemName}
+                  </span>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </section>
   );
 }

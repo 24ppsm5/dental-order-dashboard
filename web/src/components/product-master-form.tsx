@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import {
+  ChevronDown,
   Clock,
   ExternalLink,
   Link2,
@@ -291,107 +292,99 @@ export function ProductMasterForm() {
           <Separator />
 
           {/* 2. 登録済み商品一覧（Airtable と同期） */}
-          <section className="bg-background/80">
-            <div className="flex items-center justify-between gap-1.5 border-b border-border px-4 py-2.5">
-              <div className="flex items-center gap-1.5">
-                <PackagePlus className="size-3.5 text-muted-foreground" />
-                <h3 className="text-xs font-semibold">登録済み商品一覧</h3>
-              </div>
+          <SidebarSection
+            icon={<PackagePlus className="size-3.5 text-muted-foreground" />}
+            title="登録済み商品一覧"
+            meta={
               <span className="text-[10px] text-muted-foreground">
                 {productsLoading ? "更新中…" : `${products.length}件`}
               </span>
-            </div>
-            <div className="p-4">
-              {productsError && (
-                <div
-                  className="mb-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive"
-                  role="alert"
-                >
-                  {productsError}
-                </div>
-              )}
-              {productsLoading ? (
-                <p className="text-xs text-muted-foreground">読み込み中…</p>
-              ) : products.length === 0 ? (
-                <p className="text-xs text-muted-foreground">
-                  登録された商品はまだありません
-                </p>
-              ) : (
-                <ul className="space-y-1.5">
-                  {products.map((p) => (
-                    <li
-                      key={p.recordId}
-                      className="flex items-center justify-between gap-2 rounded-md border border-border/60 bg-background px-2 py-1.5"
+            }
+          >
+            {productsError && (
+              <div
+                className="mb-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive"
+                role="alert"
+              >
+                {productsError}
+              </div>
+            )}
+            {productsLoading ? (
+              <p className="text-xs text-muted-foreground">読み込み中…</p>
+            ) : products.length === 0 ? (
+              <p className="text-xs text-muted-foreground">
+                登録された商品はまだありません
+              </p>
+            ) : (
+              <ul className="space-y-1.5">
+                {products.map((p) => (
+                  <li
+                    key={p.recordId}
+                    className="flex items-center justify-between gap-2 rounded-md border border-border/60 bg-background px-2 py-1.5"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium">{p.name}</p>
+                      <p className="truncate text-[11px] text-muted-foreground">
+                        {p.vendor} ・ {p.unit} ・ {p.price.toLocaleString()}円
+                      </p>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="size-7 shrink-0 text-muted-foreground hover:text-destructive"
+                      disabled={deletingId === p.recordId}
+                      onClick={() => handleDelete(p.recordId)}
+                      aria-label={`${p.name}を削除`}
                     >
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-medium">
-                          {p.name}
-                        </p>
-                        <p className="truncate text-[11px] text-muted-foreground">
-                          {p.vendor} ・ {p.unit} ・ {p.price.toLocaleString()}円
-                        </p>
-                      </div>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        className="size-7 shrink-0 text-muted-foreground hover:text-destructive"
-                        disabled={deletingId === p.recordId}
-                        onClick={() => handleDelete(p.recordId)}
-                        aria-label={`${p.name}を削除`}
-                      >
-                        {deletingId === p.recordId ? (
-                          <Loader2 className="size-3.5 animate-spin" />
-                        ) : (
-                          <Trash2 className="size-3.5" />
-                        )}
-                      </Button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          </section>
+                      {deletingId === p.recordId ? (
+                        <Loader2 className="size-3.5 animate-spin" />
+                      ) : (
+                        <Trash2 className="size-3.5" />
+                      )}
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </SidebarSection>
 
           <Separator />
 
           {/* 3. 最近登録した商品 */}
-          <section className="bg-background/80">
-            <div className="flex items-center gap-1.5 border-b border-border px-4 py-2.5">
-              <Clock className="size-3.5 text-muted-foreground" />
-              <h3 className="text-xs font-semibold">最近登録した商品</h3>
-            </div>
-            <div className="p-4">
-              {!hydrated ? (
-                <p className="text-xs text-muted-foreground">読み込み中…</p>
-              ) : recentProducts.length === 0 ? (
-                <p className="text-xs text-muted-foreground">
-                  登録した商品がここに表示されます
-                </p>
-              ) : (
-                <ul className="space-y-1.5">
-                  {recentProducts.map((name) => (
-                    <li
-                      key={name}
-                      className="rounded-md px-2 py-1.5 text-sm font-medium"
-                    >
-                      {name}
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          </section>
+          <SidebarSection
+            icon={<Clock className="size-3.5 text-muted-foreground" />}
+            title="最近登録した商品"
+          >
+            {!hydrated ? (
+              <p className="text-xs text-muted-foreground">読み込み中…</p>
+            ) : recentProducts.length === 0 ? (
+              <p className="text-xs text-muted-foreground">
+                登録した商品がここに表示されます
+              </p>
+            ) : (
+              <ul className="space-y-1.5">
+                {recentProducts.map((name) => (
+                  <li
+                    key={name}
+                    className="rounded-md px-2 py-1.5 text-sm font-medium"
+                  >
+                    {name}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </SidebarSection>
 
           <Separator />
 
           {/* 4. リンク集 */}
-          <section className="bg-background/60 pb-4">
-            <div className="flex items-center gap-1.5 border-b border-border px-4 py-2.5">
-              <Link2 className="size-3.5 text-muted-foreground" />
-              <h3 className="text-xs font-semibold">リンク集</h3>
-            </div>
-            <ul className="space-y-0.5 p-2">
+          <SidebarSection
+            icon={<Link2 className="size-3.5 text-muted-foreground" />}
+            title="リンク集"
+            className="pb-4"
+          >
+            <ul className="space-y-0.5">
               {ORDER_LINKS.map((link) => (
                 <li key={link.url}>
                   <a
@@ -407,10 +400,57 @@ export function ProductMasterForm() {
                 </li>
               ))}
             </ul>
-          </section>
+          </SidebarSection>
         </div>
       </ScrollArea>
     </aside>
+  );
+}
+
+/** サイドバーの折りたたみ可能なセクション。ヘッダーをタップすると開閉する */
+function SidebarSection({
+  icon,
+  title,
+  meta,
+  defaultOpen = true,
+  className,
+  children,
+}: {
+  icon: ReactNode;
+  title: string;
+  meta?: ReactNode;
+  defaultOpen?: boolean;
+  className?: string;
+  children: ReactNode;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+
+  return (
+    <section className={cn("bg-background/80", className)}>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className={cn(
+          "flex w-full items-center justify-between gap-1.5 px-4 py-2.5 text-left",
+          open && "border-b border-border"
+        )}
+      >
+        <span className="flex items-center gap-1.5">
+          {icon}
+          <h3 className="text-xs font-semibold">{title}</h3>
+        </span>
+        <span className="flex items-center gap-1.5">
+          {meta}
+          <ChevronDown
+            className={cn(
+              "size-3.5 text-muted-foreground transition-transform",
+              !open && "-rotate-90"
+            )}
+          />
+        </span>
+      </button>
+      {open && <div className="p-4">{children}</div>}
+    </section>
   );
 }
 
