@@ -10,6 +10,14 @@ import {
   Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -44,6 +52,7 @@ const EMPTY_FORM: FormState = {
 };
 
 export function ProductMasterForm() {
+  const [dialogOpen, setDialogOpen] = useState(false);
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [submitting, setSubmitting] = useState(false);
   const [recentProducts, setRecentProducts] = useState<string[]>([]);
@@ -91,6 +100,15 @@ export function ProductMasterForm() {
     if (message) setMessage(null);
   };
 
+  const handleDialogOpenChange = (open: boolean) => {
+    setDialogOpen(open);
+    if (!open && !submitting) {
+      // 閉じたときは次に開いたとき真っさらな状態から入力できるようにする
+      setForm(EMPTY_FORM);
+      setMessage(null);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitting(true);
@@ -123,12 +141,11 @@ export function ProductMasterForm() {
 
       const updated = addRecentProductName(payload.name);
       setRecentProducts(updated);
-      setMessage({
-        type: "success",
-        text: data.message ?? "商品を登録しました",
-      });
       setForm(EMPTY_FORM);
       fetchProducts();
+      // 登録できたらポップを閉じる（一覧・最近登録した商品が更新結果を示す）
+      setDialogOpen(false);
+      setMessage(null);
     } catch (err) {
       setMessage({
         type: "error",
@@ -164,87 +181,111 @@ export function ProductMasterForm() {
     <aside className="flex h-full w-72 shrink-0 flex-col border-l border-border bg-muted/30">
       <ScrollArea className="min-h-0 flex-1">
         <div className="flex flex-col">
-          {/* 1. 商品マスター登録フォーム */}
+          {/* 1. 商品マスター登録（ボタンからポップアップで登録） */}
           <section className="bg-background">
-            <div className="border-b border-border px-4 py-3">
-              <h2 className="text-sm font-semibold">商品マスター登録</h2>
-              <p className="mt-0.5 text-xs text-muted-foreground">
-                Airtable「商品マスター」へ追加
-              </p>
+            <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-3">
+              <div className="min-w-0">
+                <h2 className="text-sm font-semibold">商品マスター登録</h2>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  Airtable「商品マスター」へ追加
+                </p>
+              </div>
+              <Dialog open={dialogOpen} onOpenChange={handleDialogOpenChange}>
+                <DialogTrigger
+                  render={
+                    <Button type="button" size="sm" className="shrink-0">
+                      <PackagePlus />
+                      登録
+                    </Button>
+                  }
+                />
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>商品マスター登録</DialogTitle>
+                    <DialogDescription>
+                      Airtable「商品マスター」へ追加します
+                    </DialogDescription>
+                  </DialogHeader>
+                  <form onSubmit={handleSubmit} className="space-y-3">
+                    <Field
+                      id="product-name"
+                      label={PRODUCT_FIELD_NAMES.name}
+                      value={form.name}
+                      onChange={(v) => update("name", v)}
+                      placeholder="例：プレオルソ"
+                      required
+                    />
+                    <Field
+                      id="product-unit"
+                      label={PRODUCT_FIELD_NAMES.unit}
+                      value={form.unit}
+                      onChange={(v) => update("unit", v)}
+                      placeholder="例：個"
+                      required
+                    />
+                    <Field
+                      id="product-price"
+                      label={PRODUCT_FIELD_NAMES.price}
+                      value={form.price}
+                      onChange={(v) => update("price", v)}
+                      placeholder="例：1500"
+                      type="number"
+                      min="0"
+                      step="1"
+                      required
+                    />
+                    <Field
+                      id="product-vendor"
+                      label={PRODUCT_FIELD_NAMES.vendor}
+                      value={form.vendor}
+                      onChange={(v) => update("vendor", v)}
+                      placeholder="例：Ciモール"
+                      required
+                    />
+                    <Field
+                      id="product-order-number"
+                      label={PRODUCT_FIELD_NAMES.orderNumber}
+                      value={form.orderNumber}
+                      onChange={(v) => update("orderNumber", v)}
+                      placeholder="例：CI-12345"
+                      required
+                    />
+
+                    {message && (
+                      <div
+                        className={cn(
+                          "rounded-lg px-3 py-2 text-xs",
+                          message.type === "success"
+                            ? "border border-emerald-200 bg-emerald-50 text-emerald-800"
+                            : "border border-destructive/30 bg-destructive/5 text-destructive"
+                        )}
+                        role="alert"
+                      >
+                        {message.text}
+                      </div>
+                    )}
+
+                    <Button
+                      type="submit"
+                      className="w-full"
+                      disabled={submitting}
+                    >
+                      {submitting ? (
+                        <>
+                          <Loader2 className="animate-spin" />
+                          登録中…
+                        </>
+                      ) : (
+                        <>
+                          <PackagePlus />
+                          登録
+                        </>
+                      )}
+                    </Button>
+                  </form>
+                </DialogContent>
+              </Dialog>
             </div>
-            <form onSubmit={handleSubmit} className="space-y-3 p-4">
-              <Field
-                id="product-name"
-                label={PRODUCT_FIELD_NAMES.name}
-                value={form.name}
-                onChange={(v) => update("name", v)}
-                placeholder="例：プレオルソ"
-                required
-              />
-              <Field
-                id="product-unit"
-                label={PRODUCT_FIELD_NAMES.unit}
-                value={form.unit}
-                onChange={(v) => update("unit", v)}
-                placeholder="例：個"
-                required
-              />
-              <Field
-                id="product-price"
-                label={PRODUCT_FIELD_NAMES.price}
-                value={form.price}
-                onChange={(v) => update("price", v)}
-                placeholder="例：1500"
-                type="number"
-                min="0"
-                step="1"
-                required
-              />
-              <Field
-                id="product-vendor"
-                label={PRODUCT_FIELD_NAMES.vendor}
-                value={form.vendor}
-                onChange={(v) => update("vendor", v)}
-                placeholder="例：Ciモール"
-                required
-              />
-              <Field
-                id="product-order-number"
-                label={PRODUCT_FIELD_NAMES.orderNumber}
-                value={form.orderNumber}
-                onChange={(v) => update("orderNumber", v)}
-                placeholder="例：CI-12345"
-                required
-              />
-
-              {message && (
-                <div
-                  className={cn(
-                    "rounded-lg px-3 py-2 text-xs",
-                    message.type === "success"
-                      ? "border border-emerald-200 bg-emerald-50 text-emerald-800"
-                      : "border border-destructive/30 bg-destructive/5 text-destructive"
-                  )}
-                  role="alert"
-                >
-                  {message.text}
-                </div>
-              )}
-
-              <Button type="submit" className="w-full" disabled={submitting}>
-                {submitting ? (
-                  <>
-                    <Loader2 className="animate-spin" />
-                    登録中…
-                  </>
-                ) : (
-                  <>
-                    <PackagePlus />
-                    登録
-                  </>
-                )}
-              </Button>
-            </form>
           </section>
 
           <Separator />
